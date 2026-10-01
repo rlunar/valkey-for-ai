@@ -46,11 +46,26 @@ npx serve .
 
 Open `http://localhost:8000` in your browser.
 
+## Prefer Jupyter Notebooks?
+
+Every cookbook is also available as a generated `.ipynb` file for readers who
+prefer to run examples interactively in JupyterLab or VS Code.
+
+```bash
+uv sync
+uv run jupyter lab notebooks/
+```
+
+See [Jupyter Notebooks](docs/Jupyter_Notebooks.md) for why the project provides
+notebooks, how Markdown cookbooks are converted, and how contributors keep the
+generated files current. Save personal experiments outside `notebooks/`
+because files in that directory are regenerated from Markdown.
+
 ## Contributing
 
 ### Editing cookbooks
 
-All cookbook content lives in markdown files under `content/`. When you push to `main`, a GitHub Action runs `node build.js` to regenerate the HTML in `cookbooks/`, and the site updates automatically.
+All cookbook content lives in markdown files under `content/`. Each cookbook is built into HTML under `cookbooks/` and a Jupyter notebook under `notebooks/`. When you push to `main`, a GitHub Action regenerates both formats and the site updates automatically.
 
 ```
 content/
@@ -72,7 +87,7 @@ content/
 
 1. Edit the `.md` file in `content/<track>/`
 2. Use fenced code blocks with language tags (` ```python `, ` ```bash `)
-3. Run `node build.js` locally to preview (optional)
+3. Run `npm run build` locally to regenerate the HTML and notebook
 4. Push to `main` - the GitHub Action rebuilds and Amplify deploys
 
 **To add a new cookbook to an existing track:**
@@ -125,25 +140,30 @@ content/
 | `styles.css` | Main site styles | Edit directly |
 | `cookbooks/cookbook.css` | Cookbook page styles | Edit directly |
 | `build.js` | Markdown-to-HTML builder | Generates `cookbooks/<track>/*.html` from `content/` |
+| `build-notebooks.js` | Markdown-to-notebook builder | Generates and validates `notebooks/<track>/*.ipynb` |
 
 ### Running the build locally
 
 ```bash
 npm install        # first time only
-node build.js      # builds all tracks
-node build.js semantic-caching   # build one track
+npm run build      # builds HTML and notebooks for all tracks
+npm run build:html -- semantic-caching
+npm run build:notebooks -- semantic-caching
 ```
 
-### Generating Jupyter notebooks (optional)
+### Generating and checking Jupyter notebooks
 
-Every cookbook can be exported as a `.ipynb` notebook for use in JupyterLab, Colab, or VS Code:
+Every cookbook has a tracked `.ipynb` notebook for use in JupyterLab, Colab, or VS Code. Cookbook pages link directly to their notebook.
+
+The complete generation and contribution workflow is documented in
+[Jupyter Notebooks](docs/Jupyter_Notebooks.md).
 
 ```bash
-node build-notebooks.js                    # all tracks → notebooks/
-node build-notebooks.js semantic-caching   # one track
+npm run build:notebooks   # regenerate every notebook
+npm run check:notebooks   # fail on missing, stale, or orphan notebooks
 ```
 
-Notebooks are generated from the same markdown source in `content/`. Python blocks become code cells, bash blocks become `!`-prefixed code cells, and prose stays as markdown cells.
+Notebooks are generated from the same markdown source in `content/`. Python blocks become code cells, shell commands use `%%bash` cells, environment snippets and other languages stay as fenced Markdown, and prose stays as Markdown cells.
 
 ## Project structure
 
@@ -153,6 +173,8 @@ valkeyforai/
 ├── styles.css                # Site styles
 ├── script.js                 # Homepage interactions
 ├── build.js                  # Markdown → HTML builder
+├── build-notebooks.js        # Markdown → Jupyter notebook builder
+├── docs/                     # Project documentation
 ├── content/                  # Markdown source (edit these)
 │   ├── semantic-caching/
 │   ├── conversation-memory/
@@ -168,13 +190,14 @@ valkeyforai/
 │   ├── haystack/
 │   └── strands/
 ├── cookbooks/                # Generated HTML (don't edit directly)
+├── notebooks/                # Generated Jupyter notebooks
 ├── demo/                     # Interactive demos
 └── use-cases/                # Use-case overview pages
 ```
 
 ## Tech stack
 
-- Pure HTML/CSS/JS (no framework, no build tools beyond `node build.js`)
+- Pure HTML/CSS/JS (no framework, with small Node.js build scripts)
 - [Inter](https://fonts.google.com/specimen/Inter) font
 - [highlight.js](https://highlightjs.org/) for syntax highlighting
 - Hosted on AWS Amplify

@@ -10,6 +10,7 @@ Thumbs.db
 # Editor directories and files
 .vscode/
 .idea/
+**/.ipynb_checkpoints/
 *.swp
 *.swo
 *~
@@ -37,6 +38,3 @@ haystack-test/strands-venv/
 __pycache__/
 *.pyc
 node_modules/
-
-cookbooks/*
-notebooks/*

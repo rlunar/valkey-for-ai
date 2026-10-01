@@ -5,10 +5,12 @@
  * Usage:
  *   node build-notebooks.js                    # builds all tracks
  *   node build-notebooks.js semantic-caching   # builds one track
+ *   node build-notebooks.js --check             # verifies tracked notebooks
  *
  * Output goes to notebooks/<track>/<notebook>.ipynb
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -19,9 +21,9 @@ const OUTPUT_DIR = path.join(__dirname, 'notebooks');
  * Split markdown into alternating prose / code blocks.
  * Returns an array of { type: 'markdown' | 'code', lang?: string, content: string }
  */
-function splitMarkdown(md) {
+function splitMarkdown(md, sourceLabel) {
   const blocks = [];
-  const fenceRe = /^```(\w*)\s*$/;
+  const fenceRe = /^```([^`]*)\s*$/;
   const lines = md.split('\n');
   let i = 0;
 
@@ -37,12 +39,15 @@ function splitMarkdown(md) {
     const fenceMatch = lines[i].match(fenceRe);
     if (fenceMatch) {
       flushMd();
-      const lang = fenceMatch[1] || '';
+      const lang = (fenceMatch[1] || '').trim().split(/\s+/, 1)[0];
       i++; // skip opening fence
       const codeBuf = [];
       while (i < lines.length && !lines[i].match(/^```\s*$/)) {
         codeBuf.push(lines[i]);
         i++;
+      }
+      if (i >= lines.length) {
+        throw new Error(`Unclosed code fence in ${sourceLabel}`);
       }
       i++; // skip closing fence
       blocks.push({ type: 'code', lang, content: codeBuf.join('\n') });
@@ -58,7 +63,7 @@ function splitMarkdown(md) {
 /**
  * Convert a list of blocks into Jupyter notebook cells.
  * - python code → code cells
- * - bash code → code cells prefixed with ! (so they run in notebook)
+ * - bash code → %%bash cells, except environment-file snippets
  * - other fenced code (json, text, pseudo) → markdown cells wrapped in fences
  * - prose → markdown cells
  */
@@ -72,28 +77,35 @@ function blocksToNotebookCells(blocks) {
       const lang = block.lang.toLowerCase();
       if (lang === 'python' || lang === 'py') {
         cells.push(codeCell(block.content));
-      } else if (lang === 'mermaid') {
-        // Skip mermaid diagrams — not supported in Jupyter
       } else if (lang === 'bash' || lang === 'sh' || lang === 'shell') {
-        // Convert each line to a !-prefixed shell command for notebooks
-        const shellLines = block.content
-          .split('\n')
-          .map(line => {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('#')) return trimmed;
-            return trimmed.startsWith('!') ? trimmed : `!${trimmed}`;
-          })
-          .join('\n');
-        cells.push(codeCell(shellLines));
+        if (isEnvironmentSnippet(block.content)) {
+          cells.push(markdownCell(fencedBlock(block)));
+        } else {
+          cells.push(codeCell(`%%bash\n${block.content}`));
+        }
       } else {
-        // Non-executable code (json, yaml, text, pseudo-code) → markdown fence
-        cells.push(markdownCell(`\`\`\`${block.lang}\n${block.content}\n\`\`\``));
+        // Preserve diagrams and non-Python examples as fenced Markdown.
+        cells.push(markdownCell(fencedBlock(block)));
       }
     }
   }
   return cells;
 }
 
+function isEnvironmentSnippet(source) {
+  const meaningfulLines = source
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'));
+
+  return meaningfulLines.length > 0 && meaningfulLines.every(line =>
+    /^(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*=/.test(line)
+  );
+}
+
+function fencedBlock(block) {
+  return `\`\`\`${block.lang}\n${block.content}\n\`\`\``;
+}
 
 function markdownCell(source) {
   return {
@@ -113,13 +125,24 @@ function codeCell(source) {
   };
 }
 
+function addCellIds(cells) {
+  return cells.map((cell, index) => ({
+    ...cell,
+    id: crypto
+      .createHash('sha256')
+      .update(`${index}\0${cell.cell_type}\0${cell.source.join('')}`)
+      .digest('hex')
+      .slice(0, 12),
+  }));
+}
+
 /** Jupyter expects source as an array of lines, each ending with \n except the last */
 function sourceLines(text) {
   const lines = text.split('\n');
   return lines.map((line, i) => (i < lines.length - 1 ? line + '\n' : line));
 }
 
-function buildNotebook(cells, title) {
+function buildNotebook(cells, title, trackName, source) {
   return {
     nbformat: 4,
     nbformat_minor: 5,
@@ -131,74 +154,248 @@ function buildNotebook(cells, title) {
       },
       language_info: {
         name: 'python',
-        version: '3.11.0',
+        version: '3.12',
       },
       title,
+      valkey_for_ai: {
+        generated_by: 'build-notebooks.js',
+        source: path.posix.join('content', trackName, source),
+      },
     },
-    cells,
+    cells: addCellIds(cells),
   };
 }
 
-function loadMeta(trackDir) {
+function loadMeta(trackDir, issues) {
   const metaPath = path.join(trackDir, 'meta.json');
   if (!fs.existsSync(metaPath)) {
-    console.error(`  ⚠️  No meta.json in ${trackDir}`);
+    issues.push(`Missing metadata: ${path.relative(__dirname, metaPath)}`);
     return null;
   }
-  return JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+
+  try {
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    if (typeof meta.trackName !== 'string' || !meta.trackName.trim()) {
+      issues.push(`Invalid metadata: ${path.relative(__dirname, metaPath)} must contain a trackName`);
+    }
+    if (!Array.isArray(meta.cookbooks)) {
+      issues.push(`Invalid metadata: ${path.relative(__dirname, metaPath)} must contain a cookbooks array`);
+      return null;
+    }
+    return meta;
+  } catch (error) {
+    issues.push(`Invalid JSON: ${path.relative(__dirname, metaPath)} (${error.message})`);
+    return null;
+  }
 }
 
-function buildTrack(trackName) {
-  const trackDir = path.join(CONTENT_DIR, trackName);
-  const outDir = path.join(OUTPUT_DIR, trackName);
+function createBuildPlan(trackNames) {
+  const issues = [];
+  const plan = [];
 
-  if (!fs.existsSync(trackDir)) {
-    console.error(`❌ Track not found: ${trackDir}`);
-    return;
+  for (const trackName of trackNames) {
+    const trackDir = path.join(CONTENT_DIR, trackName);
+    const meta = loadMeta(trackDir, issues);
+    if (!meta) continue;
+
+    const listedSources = new Set();
+
+    for (const cookbook of meta.cookbooks) {
+      if (!cookbook || typeof cookbook !== 'object') {
+        issues.push(`Invalid cookbook entry in content/${trackName}/meta.json`);
+        continue;
+      }
+
+      if (typeof cookbook.source !== 'string' ||
+          path.basename(cookbook.source) !== cookbook.source ||
+          !cookbook.source.endsWith('.md')) {
+        issues.push(`Invalid cookbook source in content/${trackName}/meta.json: ${cookbook.source}`);
+        continue;
+      }
+
+      for (const field of ['title', 'difficulty', 'time']) {
+        if (typeof cookbook[field] !== 'string' || !cookbook[field].trim()) {
+          issues.push(`Missing ${field} for content/${trackName}/${cookbook.source}`);
+        }
+      }
+
+      if (listedSources.has(cookbook.source)) {
+        issues.push(`Duplicate cookbook source in content/${trackName}/meta.json: ${cookbook.source}`);
+        continue;
+      }
+      listedSources.add(cookbook.source);
+
+      const mdPath = path.join(trackDir, cookbook.source);
+      if (!fs.existsSync(mdPath)) {
+        issues.push(`Missing cookbook source: ${path.relative(__dirname, mdPath)}`);
+        continue;
+      }
+
+      const outName = cookbook.source.replace(/\.md$/, '.ipynb');
+      plan.push({
+        cookbook,
+        meta,
+        mdPath,
+        outPath: path.join(OUTPUT_DIR, trackName, outName),
+        trackName,
+      });
+    }
+
+    const unlistedMarkdown = fs.readdirSync(trackDir)
+      .filter(file => file.endsWith('.md') && !listedSources.has(file))
+      .sort();
+    for (const file of unlistedMarkdown) {
+      issues.push(`Cookbook is not listed in content/${trackName}/meta.json: ${file}`);
+    }
   }
 
-  const meta = loadMeta(trackDir);
-  if (!meta) return;
+  if (issues.length > 0) {
+    throw new Error(issues.join('\n'));
+  }
 
-  fs.mkdirSync(outDir, { recursive: true });
+  return plan;
+}
 
-  console.log(`📓 Building notebooks: ${meta.trackName} (${meta.cookbooks.length} cookbooks)`);
+function renderNotebook(item) {
+  const md = fs.readFileSync(item.mdPath, 'utf8');
+  const titleMd = `# ${item.cookbook.title}\n\n**${item.cookbook.difficulty}** · ~${item.cookbook.time} · ${item.meta.trackName}`;
+  const blocks = splitMarkdown(md, path.relative(__dirname, item.mdPath));
+  const cells = [markdownCell(titleMd), ...blocksToNotebookCells(blocks)];
+  const notebook = buildNotebook(
+    cells,
+    item.cookbook.title,
+    item.trackName,
+    item.cookbook.source
+  );
 
-  for (const cookbook of meta.cookbooks) {
-    const mdPath = path.join(trackDir, cookbook.source);
-    if (!fs.existsSync(mdPath)) {
-      console.error(`  ⚠️  Missing: ${mdPath}`);
+  return `${JSON.stringify(notebook, null, 1)}\n`;
+}
+
+function findNotebookFiles(rootDir) {
+  if (!fs.existsSync(rootDir)) return [];
+
+  const files = [];
+  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+    const entryPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === '.ipynb_checkpoints') continue;
+      files.push(...findNotebookFiles(entryPath));
+    } else if (entry.isFile() && entry.name.endsWith('.ipynb')) {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
+function syncNotebooks(plan, scopeDir, checkOnly) {
+  const issues = [];
+  const expectedPaths = new Set(plan.map(item => item.outPath));
+  const renderedPlan = plan.map(item => ({
+    ...item,
+    expected: renderNotebook(item),
+  }));
+  let written = 0;
+
+  for (const item of renderedPlan) {
+    const relativeOutPath = path.relative(__dirname, item.outPath);
+
+    if (checkOnly) {
+      if (!fs.existsSync(item.outPath)) {
+        issues.push(`Missing notebook: ${relativeOutPath}`);
+      } else if (fs.readFileSync(item.outPath, 'utf8') !== item.expected) {
+        issues.push(`Stale notebook: ${relativeOutPath}`);
+      }
       continue;
     }
 
-    const md = fs.readFileSync(mdPath, 'utf8');
+    fs.mkdirSync(path.dirname(item.outPath), { recursive: true });
+    if (!fs.existsSync(item.outPath) || fs.readFileSync(item.outPath, 'utf8') !== item.expected) {
+      fs.writeFileSync(item.outPath, item.expected);
+      written++;
+    }
+  }
 
-    // Add a title cell at the top
-    const titleMd = `# ${cookbook.title}\n\n**${cookbook.difficulty}** · ~${cookbook.time} · ${meta.trackName}`;
-    const blocks = splitMarkdown(md);
-    const cells = [markdownCell(titleMd), ...blocksToNotebookCells(blocks)];
+  const orphaned = findNotebookFiles(scopeDir)
+    .filter(file => !expectedPaths.has(file))
+    .sort();
 
-    const nb = buildNotebook(cells, cookbook.title);
-    const outName = cookbook.source.replace(/\.md$/, '.ipynb');
-    const outPath = path.join(outDir, outName);
-    fs.writeFileSync(outPath, JSON.stringify(nb, null, 1));
-    console.log(`  ✅ ${outName}`);
+  for (const file of orphaned) {
+    const relativePath = path.relative(__dirname, file);
+    if (checkOnly) {
+      issues.push(`Orphan notebook: ${relativePath}`);
+    } else {
+      fs.unlinkSync(file);
+      console.log(`  🗑️  Removed ${relativePath}`);
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new Error(issues.join('\n'));
+  }
+
+  return { removed: orphaned.length, written };
+}
+
+function getTrackNames(targetTrack) {
+  if (targetTrack) {
+    if (path.basename(targetTrack) !== targetTrack) {
+      throw new Error(`Invalid track name: ${targetTrack}`);
+    }
+
+    const trackDir = path.join(CONTENT_DIR, targetTrack);
+    if (!fs.existsSync(trackDir) || !fs.statSync(trackDir).isDirectory()) {
+      throw new Error(`Track not found: content/${targetTrack}`);
+    }
+    return [targetTrack];
+  }
+
+  return fs.readdirSync(CONTENT_DIR)
+    .filter(entry => fs.statSync(path.join(CONTENT_DIR, entry)).isDirectory())
+    .sort();
+}
+
+function parseArgs(args) {
+  const supportedFlags = new Set(['--check']);
+  const unknownFlags = args.filter(arg => arg.startsWith('--') && !supportedFlags.has(arg));
+  const positional = args.filter(arg => !arg.startsWith('--'));
+
+  if (unknownFlags.length > 0 || positional.length > 1) {
+    throw new Error('Usage: node build-notebooks.js [--check] [track-name]');
+  }
+
+  return {
+    checkOnly: args.includes('--check'),
+    targetTrack: positional[0],
+  };
+}
+
+function main() {
+  const { checkOnly, targetTrack } = parseArgs(process.argv.slice(2));
+  const trackNames = getTrackNames(targetTrack);
+  const plan = createBuildPlan(trackNames);
+  const scopeDir = targetTrack ? path.join(OUTPUT_DIR, targetTrack) : OUTPUT_DIR;
+
+  if (checkOnly) {
+    console.log(`🔎 Checking ${plan.length} notebook(s) across ${trackNames.length} track(s)...`);
+  } else {
+    console.log(`🔨 Building ${plan.length} notebook(s) across ${trackNames.length} track(s)...`);
+  }
+
+  const result = syncNotebooks(plan, scopeDir, checkOnly);
+
+  if (checkOnly) {
+    console.log('✅ Every cookbook has a current Jupyter notebook.');
+  } else {
+    console.log(`✨ Done. Updated ${result.written}, removed ${result.removed}.`);
   }
 }
 
-// --- Main ---
-const targetTrack = process.argv[2];
-
-if (targetTrack) {
-  buildTrack(targetTrack);
-} else {
-  const tracks = fs.readdirSync(CONTENT_DIR).filter(d =>
-    fs.statSync(path.join(CONTENT_DIR, d)).isDirectory()
-  );
-  console.log(`🔨 Building notebooks for ${tracks.length} track(s)...\n`);
-  for (const track of tracks) {
-    buildTrack(track);
+try {
+  main();
+} catch (error) {
+  console.error('❌ Notebook build failed:');
+  for (const line of error.message.split('\n')) {
+    console.error(`  ${line}`);
   }
+  process.exitCode = 1;
 }
-
-console.log('\n✨ Done!');

@@ -12,6 +12,7 @@ dependencies = [
     "tiktoken",
     "ipykernel",
     "pytest",
+    "jupyterlab>=4.6.4",
 ]
 
 [project.optional-dependencies]

@@ -8,14 +8,20 @@
  * Usage: node dev.js
  */
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const path = require('path');
 const chokidar = require('chokidar');
 const browserSync = require('browser-sync').create();
 
+function runBuild(script, track) {
+  const args = track ? [script, track] : [script];
+  execFileSync(process.execPath, args, { stdio: 'inherit' });
+}
+
 // Initial full build
 console.log('🔨 Running initial build...\n');
-execSync('node build.js', { stdio: 'inherit' });
+runBuild('build.js');
+runBuild('build-notebooks.js');
 
 // Start browser-sync
 browserSync.init({
@@ -36,12 +42,14 @@ console.log('\n👀 Watching content/ for changes...\n');
 // Watch markdown + meta.json, rebuild the affected track on change
 chokidar
   .watch('content/**/*.{md,json}', { ignoreInitial: true })
-  .on('change', (filePath) => {
+  .on('all', (event, filePath) => {
+    if (!['add', 'change', 'unlink'].includes(event)) return;
     const track = filePath.split(path.sep)[1]; // content/<track>/file.md
     console.log(`\n📝 Changed: ${filePath}`);
     console.log(`🔨 Rebuilding: ${track}`);
     try {
-      execSync(`node build.js ${track}`, { stdio: 'inherit' });
+      runBuild('build.js', track);
+      runBuild('build-notebooks.js', track);
     } catch (e) {
       console.error(`❌ Build failed for ${track}`);
     }

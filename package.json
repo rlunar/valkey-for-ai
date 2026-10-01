@@ -4,9 +4,11 @@
   "description": "A practical, use-case-driven hub that helps developers understand how to use Valkey in real AI workloads. Instead of making users piece together low-level features, this site offers clear cookbooks, reference architectures, GitHub demos, and runnable projects for patterns like semantic caching, conversation memory, vector search, agent session state, rate limiting, streaming responses, and more.",
   "main": "script.js",
   "scripts": {
-    "build": "node build.js",
+    "build": "npm run build:html && npm run build:notebooks",
+    "build:html": "node build.js",
     "dev": "node dev.js",
     "build:notebooks": "node build-notebooks.js",
+    "check:notebooks": "node build-notebooks.js --check",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

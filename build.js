@@ -31,6 +31,7 @@ function loadMeta(trackDir) {
 
 function buildPage(mdContent, cookbook, track, meta) {
   let htmlContent = marked.parse(mdContent);
+  const notebookFile = cookbook.source.replace(/\.md$/, '.ipynb');
 
   // Convert <pre><code class="language-mermaid">...</code></pre> to <pre class="mermaid">...</pre>
   // so mermaid.js can find and render them
@@ -77,7 +78,7 @@ pre code.hljs{background:transparent!important;padding:0}
 <nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
 <article>
 <div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/${track}/">${meta.trackName}</a> → ${cookbook.num} ${cookbook.breadcrumb || cookbook.title}</div>
-<div class="meta"><span class="${diffClass}">${cookbook.difficulty}</span><span class="lang">${cookbook.language || 'Python'}</span><span class="lang">~${cookbook.time}</span></div>
+<div class="meta"><span class="${diffClass}">${cookbook.difficulty}</span><span class="lang">${cookbook.language || 'Python'}</span><span class="lang">~${cookbook.time}</span><a class="notebook-link" href="/notebooks/${track}/${notebookFile}" download>↓ Jupyter notebook</a></div>
 <h1>${cookbook.h1 || cookbook.title}</h1>
 ${cookbook.lead ? `<p class="lead">${cookbook.lead}</p>` : ''}
 
