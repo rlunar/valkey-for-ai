@@ -5,6 +5,7 @@ sequentially against real Valkey and external services.
 """
 
 import pytest
+import valkey
 
 
 def test_05_scaling_production(client):

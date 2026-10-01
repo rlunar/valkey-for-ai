@@ -7,12 +7,12 @@ sequentially against real Valkey and external services.
 import pytest
 
 
-def test_05_cost_based(client):
+def test_05_cost_based(client, openai_model):
     """Run all code blocks from: Cost-Based Rate Limiting."""
 
     # --- Block 1 ---
     MODEL_COSTS = {
-        "gpt-4":          {"input": 0.030, "output": 0.060},
+        openai_model:          {"input": 0.030, "output": 0.060},
         "gpt-4o":         {"input": 0.005, "output": 0.015},
         "gpt-3.5-turbo":  {"input": 0.001, "output": 0.002},
         "claude-3-opus":  {"input": 0.015, "output": 0.075},
@@ -41,7 +41,7 @@ def test_05_cost_based(client):
             return {"allowed": False, "remaining": f"${max(0, budget - current):.4f}"}
 
     # --- Block 3 ---
-    def smart_model_select(identifier, preferred_model="gpt-4"):
+    def smart_model_select(identifier, preferred_model=openai_model):
         window_num = int(time.time() // 3600)
         current_spend = float(client.get(f"budget:{identifier}:{window_num}") or 0)
         budget = 10.00
@@ -50,7 +50,7 @@ def test_05_cost_based(client):
         if remaining_pct > 0.5:
             return preferred_model              # Plenty of budget
         elif remaining_pct > 0.2:
-            return {"gpt-4": "gpt-4o"}.get(preferred_model, preferred_model)
+            return {openai_model: "gpt-4o"}.get(preferred_model, preferred_model)
         elif remaining_pct > 0.05:
             return "gpt-3.5-turbo"             # Emergency mode
         else:

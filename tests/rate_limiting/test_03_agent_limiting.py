@@ -7,7 +7,7 @@ sequentially against real Valkey and external services.
 import pytest
 
 
-def test_03_agent_limiting(client):
+def test_03_agent_limiting(client, openai_model):
     """Run all code blocks from: Agent Rate Limiting."""
 
     # --- Block 1 ---
@@ -72,8 +72,8 @@ def test_03_agent_limiting(client):
         return True
 
     # --- Block 4 ---
-    def track_agent_spend(agent_id: str, tokens: int, model: str = "gpt-4"):
-        cost_per_1k = {"gpt-4": 0.03, "gpt-4o": 0.005}
+    def track_agent_spend(agent_id: str, tokens: int, model: str = openai_model):
+        cost_per_1k = {openai_model: 0.03, "gpt-4o": 0.005}
         cost = (tokens / 1000) * cost_per_1k.get(model, 0.01)
         pipe = client.pipeline()
         pipe.incrbyfloat(f"agent:spend:{agent_id}:total", cost)

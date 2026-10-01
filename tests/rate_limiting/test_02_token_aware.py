@@ -7,13 +7,13 @@ sequentially against real Valkey and external services.
 import pytest
 
 
-def test_02_token_aware(client):
+def test_02_token_aware(client, openai_model):
     """Run all code blocks from: Token-Aware Rate Limiting."""
 
     # --- Block 1 ---
     import tiktoken
 
-    def count_tokens(text: str, model: str = "gpt-4") -> int:
+    def count_tokens(text: str, model: str = openai_model) -> int:
         """Count tokens using tiktoken (OpenAI's tokenizer)."""
         try:
             enc = tiktoken.encoding_for_model(model)
@@ -100,7 +100,7 @@ def test_02_token_aware(client):
 
     # --- Block 4 ---
     OUTPUT_MULTIPLIERS = {
-        "gpt-4": 1.5,
+        openai_model: 1.5,
         "gpt-4o": 1.2,
         "gpt-3.5-turbo": 1.0,
         "claude-3-sonnet": 1.3,

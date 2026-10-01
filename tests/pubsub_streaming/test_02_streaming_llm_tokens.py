@@ -7,7 +7,7 @@ sequentially against real Valkey and external services.
 import pytest
 
 
-def test_02_streaming_llm_tokens(client):
+def test_02_streaming_llm_tokens(client, openai_client, openai_model):
     """Run all code blocks from: Streaming LLM Tokens."""
 
     # --- Block 1 ---
@@ -26,7 +26,7 @@ def test_02_streaming_llm_tokens(client):
         client.publish(channel, json.dumps({
             "type": "start",
             "request_id": request_id,
-            "model": "gpt-4",
+            "model": openai_model,
             "timestamp": time.time(),
         }))
 
@@ -100,9 +100,8 @@ def test_02_streaming_llm_tokens(client):
     # Output: Valkey is an open-source in-memory data store.
 
     # --- Block 3 ---
-    from openai import OpenAI
 
-    openai_client = OpenAI()
+    openai_client = openai_client
 
     def stream_openai_to_valkey(prompt: str, request_id: str):
         """Stream from OpenAI API → Valkey Pub/Sub → all subscribers."""
@@ -111,7 +110,7 @@ def test_02_streaming_llm_tokens(client):
         client.publish(channel, json.dumps({"type": "start"}))
 
         stream = openai_client.chat.completions.create(
-            model="gpt-4",
+            model=openai_model,
             messages=[{"role": "user", "content": prompt}],
             stream=True,
         )

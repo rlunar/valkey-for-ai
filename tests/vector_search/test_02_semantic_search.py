@@ -5,6 +5,7 @@ sequentially against real Valkey and external services.
 """
 
 import pytest
+import valkey
 
 
 def test_02_semantic_search(raw_client):

@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_06_production(client):
+async def test_06_production(client, openai_model):
     """Run all code blocks from: Production Patterns."""
 
     # --- Block 1 ---
@@ -35,9 +35,9 @@ async def test_06_production(client):
     # --- Block 2 ---
     async def smart_llm_call(prompt, user_id):
         # Tier 1: Preferred model
-        result = limiter.check(user_id, model="gpt-4")
+        result = limiter.check(user_id, model=openai_model)
         if result.allowed:
-            return await call_llm(prompt, model="gpt-4")
+            return await call_llm(prompt, model=openai_model)
 
         # Tier 2: Cheaper model
         result = limiter.check(user_id, model="gpt-3.5-turbo")

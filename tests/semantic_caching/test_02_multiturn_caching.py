@@ -5,19 +5,19 @@ sequentially against real Valkey and external services.
 """
 
 import pytest
+import valkey
 
 
-def test_02_multiturn_caching(raw_client):
+def test_02_multiturn_caching(raw_client, openai_client, openai_model):
     """Run all code blocks from: Multi-Turn Conversation Caching."""
 
     # --- Block 1 ---
     import numpy as np
     import hashlib
     import time
-    from openai import OpenAI
 
     client = raw_client
-    openai_client = OpenAI()
+    openai_client = openai_client
     EMBEDDING_DIM = 1536
 
     # Index with TAG field for per-user cache isolation
@@ -111,7 +111,7 @@ def test_02_multiturn_caching(raw_client):
 
         # Cache miss - call LLM
         llm = openai_client.chat.completions.create(
-            model="gpt-4", messages=messages,
+            model=openai_model, messages=messages,
         )
         answer = llm.choices[0].message.content
 

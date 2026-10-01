@@ -7,7 +7,7 @@ sequentially against real Valkey and external services.
 import pytest
 
 
-def test_01_getting_started(raw_client):
+def test_01_getting_started(raw_client, openai_client):
     """Run all code blocks from: Getting Started with RAG."""
 
     # --- Block 1 ---
@@ -47,10 +47,9 @@ def test_01_getting_started(raw_client):
 
     # --- Block 3 ---
     import numpy as np
-    from openai import OpenAI
 
     # Initialize clients
-    openai = OpenAI()
+    openai = openai_client
     vk = raw_client
 
     def get_embedding(text):

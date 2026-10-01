@@ -7,7 +7,7 @@ sequentially against real Valkey and external services.
 import pytest
 
 
-def test_01_getting_started(client):
+def test_01_getting_started(client, openai_model):
     """Run all code blocks from: Getting Started with Pub/Sub."""
 
     # --- Block 1 ---
@@ -26,7 +26,7 @@ def test_01_getting_started(client):
     # Publish some messages
     publish_message("ai:events", {
         "type": "prediction",
-        "model": "gpt-4",
+        "model": openai_model,
         "result": "positive",
         "confidence": 0.95,
         "timestamp": time.time(),

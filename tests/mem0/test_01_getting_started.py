@@ -7,7 +7,7 @@ sequentially against real Valkey and external services.
 import pytest
 
 
-def test_01_getting_started(client):
+def test_01_getting_started(client, openai_client, openai_model):
     """Run all code blocks from: Getting Started with Mem0 + Valkey."""
 
     # --- Block 1 ---
@@ -51,9 +51,8 @@ def test_01_getting_started(client):
         print(f"  - {m['memory']}")
 
     # --- Block 4 ---
-    from openai import OpenAI
 
-    openai_client = OpenAI()
+    openai_client = openai_client
 
     def chat_with_memory(message: str, user_id: str) -> str:
         # 1. Retrieve relevant memories
@@ -71,7 +70,7 @@ def test_01_getting_started(client):
 
         # 3. Generate response
         response = openai_client.chat.completions.create(
-            model="gpt-4", messages=messages,
+            model=openai_model, messages=messages,
         )
         answer = response.choices[0].message.content
 
