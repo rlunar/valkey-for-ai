@@ -165,6 +165,20 @@ npm run check:notebooks   # fail on missing, stale, or orphan notebooks
 
 Notebooks are generated from the same markdown source in `content/`. Python blocks become code cells, shell commands use `%%bash` cells, environment snippets and other languages stay as fenced Markdown, and prose stays as Markdown cells.
 
+### Testing the build workflow locally
+
+The GitHub Action that regenerates artifacts can be reproduced locally before
+you push. See [Testing the Build Workflow Locally](docs/Local_CI_Testing.md)
+for the full workflow breakdown and three ways to test it. The quickest
+pre-flight check:
+
+```bash
+npm ci && npm run build && npm run check:notebooks \
+  && git status --porcelain -- cookbooks/ notebooks/
+```
+
+A clean run with no trailing output means the pull-request artifact check will pass.
+
 ## Project structure
 
 ```
